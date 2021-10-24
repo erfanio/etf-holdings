@@ -1,11 +1,5 @@
-[package]
-name = "eft-breakdown"
-version = "0.0.1"
-edition = "2018"
-description = "API server for breaking down ETFs into their holding and give you data about profits and losses in the ETF's holdings."
-
-[dependencies]
-reqwest = { version = "0.11", features = ["blocking", "json"] }
-rocket = { version = "0.5.0-rc.1", features = ["json"] }
-serde =  { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+[workspace]
+members = [
+    "web_server",
+    "etf_holdings",
+]
