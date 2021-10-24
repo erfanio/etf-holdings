@@ -4,20 +4,19 @@ extern crate rocket;
 use etf_holdings::AvailableETFs;
 use rocket::serde::json::Json;
 use rocket::State;
-use tokio::sync::Mutex;
 
 mod util;
 use util::ok_or_log;
 
 #[get("/etf/list")]
-async fn list(etfs: &State<Mutex<AvailableETFs>>) -> Json<Vec<String>> {
-    let list = etfs.lock().await.etf_list();
+async fn list(etfs: &State<AvailableETFs>) -> Json<Vec<String>> {
+    let list = etfs.etf_list().await;
     Json(list)
 }
 
 #[get("/etf/<ticker>")]
-async fn details(etfs: &State<Mutex<AvailableETFs>>, ticker: String) -> Option<Json<Vec<String>>> {
-    let holdings = ok_or_log(etfs.lock().await.etf_details(ticker).await)?
+async fn details(etfs: &State<AvailableETFs>, ticker: String) -> Option<Json<Vec<String>>> {
+    let holdings = ok_or_log(etfs.etf_details(ticker).await)?
         .holdings
         .iter()
         .map(|hld| format!("{} {}%", hld.ticker, hld.weight))
@@ -28,6 +27,6 @@ async fn details(etfs: &State<Mutex<AvailableETFs>>, ticker: String) -> Option<J
 #[launch]
 async fn rocket() -> _ {
     rocket::build()
-        .manage(Mutex::new(AvailableETFs::new().await))
+        .manage(AvailableETFs::new().await)
         .mount("/api", routes![list, details])
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 mod common;
 mod deserialize_weird_floats;
@@ -9,7 +9,7 @@ use common::{Error, FundManager, ETF};
 use ishares::Ishare;
 
 pub struct AvailableETFs {
-    etf_to_manager: HashMap<String, Arc<Mutex<dyn FundManager>>>,
+    etf_to_manager: RwLock<HashMap<String, Arc<Mutex<dyn FundManager>>>>,
 }
 
 impl AvailableETFs {
@@ -30,16 +30,20 @@ impl AvailableETFs {
             }
         }
 
-        AvailableETFs { etf_to_manager }
+        AvailableETFs {
+            etf_to_manager: RwLock::new(etf_to_manager)
+        }
     }
 
-    pub fn etf_list(&self) -> Vec<String> {
-        self.etf_to_manager.keys().map(|s| s.clone()).collect()
+    pub async fn etf_list(&self) -> Vec<String> {
+        self.etf_to_manager.read().await.keys().map(|s| s.clone()).collect()
     }
 
     pub async fn etf_details(&self, ticker: String) -> Result<ETF, Error> {
-        let mut manager = self
-            .etf_to_manager
+        let manager_map = self.etf_to_manager
+            .read()
+            .await;
+        let mut manager = manager_map
             .get(&ticker)
             .ok_or("ETF not found.")?
             .lock()
