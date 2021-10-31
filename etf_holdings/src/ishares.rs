@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use crate::common::{Error, FundManager, Holding, ETF};
 use crate::deserialize_weird_floats;
+use crate::yahoo;
 
 #[derive(Debug)]
 pub struct Ishare {
@@ -15,9 +16,17 @@ pub struct Ishare {
 #[async_trait]
 impl FundManager for Ishare {
     async fn new() -> Result<Self, Error> {
+        let etf_urls = {
+            match fetch_etf_list().await {
+                Ok(x) => x,
+                Err(err) => {
+                    return Err(Error::from(format!("Error Ishare::fetch_etf_list(): {:?}", err)))
+                }
+            }
+        };
         Ok(Ishare {
             fetched_etfs: HashMap::new(),
-            etf_urls: fetch_etf_list().await?,
+            etf_urls: etf_urls,
         })
     }
 
@@ -39,7 +48,10 @@ impl FundManager for Ishare {
                 self.fetched_etfs.insert(ticker.clone(), etf);
                 Ok(self.fetched_etfs.get(ticker).unwrap().clone())
             }
-            Err(x) => Err(x),
+            Err(x) => Err(Error::from(format!(
+                "Error Ishare::etf_details({}): {:?}",
+                ticker, x
+            ))),
         }
     }
 }
@@ -55,14 +67,10 @@ async fn fetch_etf_list() -> Result<HashMap<String, String>, Error> {
     let noscript_html = document
         .select(&noscript_selector)
         .next()
-        .ok_or(Error::new(
-            "Can't find a noscript block on the iShare ETFs page.",
-        ))?
+        .ok_or("Can't find a noscript block on the iShare ETFs page.")?
         .text()
         .next()
-        .ok_or(Error::new(
-            "Found a noscript block on the iShare ETFs page, but no text nodes inside.",
-        ))?;
+        .ok_or("Found a noscript block on the iShare ETFs page, but no text nodes inside.")?;
     let noscript_fragment = Html::parse_fragment(&noscript_html);
 
     // Find the table of ETFs inside the noscript block
@@ -72,7 +80,7 @@ async fn fetch_etf_list() -> Result<HashMap<String, String>, Error> {
         let url = elem
             .value()
             .attr("href")
-            .ok_or(Error::new("No href on iShare ETFs table cell."))?
+            .ok_or("No href on iShare ETFs table cell.")?
             .to_string();
         let ticker = elem.inner_html();
         etfs.insert(ticker, url);
@@ -131,9 +139,9 @@ async fn fetch_holdings(ticker: &String, url_fragment: &String) -> Result<ETF, E
     let mut outstanding_shares = None;
     let mut last_update = None;
     {
-        let info_table = splitted_csv.next().ok_or(Error::new(
-            "Can't find iShare info table. CSV format must have changed.",
-        ))?;
+        let info_table = splitted_csv
+            .next()
+            .ok_or("Can't find iShare info table. CSV format must have changed.")?;
         let mut reader = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
@@ -156,13 +164,14 @@ async fn fetch_holdings(ticker: &String, url_fragment: &String) -> Result<ETF, E
 
     let mut holdings = Vec::new();
     {
-        let holdings_table = splitted_csv.next().ok_or(Error::new(
-            "Can't find iShare holdings table. CSV format must have changed.",
-        ))?;
+        let holdings_table = splitted_csv
+            .next()
+            .ok_or("Can't find iShare holdings table. CSV format must have changed.")?;
         let mut reader = csv::ReaderBuilder::new().from_reader(holdings_table.as_bytes());
         for record in reader.deserialize() {
             let row: IshareHolding = record?;
             holdings.push(Holding {
+                yahoo_symbol: yahoo::find_symbol(&row.ticker, &row.exchange),
                 ticker: row.ticker,
                 name: row.name,
                 asset_class: row.asset_class,
@@ -181,12 +190,11 @@ async fn fetch_holdings(ticker: &String, url_fragment: &String) -> Result<ETF, E
     }
     Ok(ETF {
         ticker: ticker.clone(),
-        last_update: last_update.ok_or(Error::new(
-            "No last update found in iShare info table. CSV format must have changed.",
-        ))?,
-        outstanding_shares: outstanding_shares.ok_or(Error::new(
+        last_update: last_update
+            .ok_or("No last update found in iShare info table. CSV format must have changed.")?,
+        outstanding_shares: outstanding_shares.ok_or(
             "No outstanding shares found in iShare info table. CSV format must have changed.",
-        ))?,
+        )?,
         holdings: holdings,
     })
 }

@@ -1,32 +1,28 @@
 #[macro_use]
 extern crate rocket;
 
-use etf_holdings::AvailableETFs;
 use rocket::serde::json::Json;
 use rocket::State;
 
+mod data;
 mod util;
-use util::ok_or_log;
+mod yahoo;
+use data::{Cache, ETFDetails};
+use util::Result;
 
 #[get("/etf/list")]
-async fn list(etfs: &State<AvailableETFs>) -> Json<Vec<String>> {
-    let list = etfs.etf_list().await;
-    Json(list)
+async fn list(cache: &State<Cache>) -> Json<Vec<String>> {
+    Json(cache.etf_list().await)
 }
 
 #[get("/etf/<ticker>")]
-async fn details(etfs: &State<AvailableETFs>, ticker: String) -> Option<Json<Vec<String>>> {
-    let holdings = ok_or_log(etfs.etf_details(ticker).await)?
-        .holdings
-        .iter()
-        .map(|hld| format!("{} {}%", hld.ticker, hld.weight))
-        .collect();
-    Some(Json(holdings))
+async fn details(cache: &State<Cache>, ticker: String) -> Result<Json<ETFDetails>> {
+    Ok(Json(cache.details(&ticker).await?))
 }
 
 #[launch]
 async fn rocket() -> _ {
     rocket::build()
-        .manage(AvailableETFs::new().await)
+        .manage(Cache::new().await)
         .mount("/api", routes![list, details])
 }

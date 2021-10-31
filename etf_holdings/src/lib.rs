@@ -5,7 +5,8 @@ use tokio::sync::{Mutex, RwLock};
 mod common;
 mod deserialize_weird_floats;
 mod ishares;
-use common::{Error, FundManager, ETF};
+mod yahoo;
+pub use common::{Error, FundManager, ETF};
 use ishares::Ishare;
 
 pub struct AvailableETFs {
@@ -31,23 +32,22 @@ impl AvailableETFs {
         }
 
         AvailableETFs {
-            etf_to_manager: RwLock::new(etf_to_manager)
+            etf_to_manager: RwLock::new(etf_to_manager),
         }
     }
 
     pub async fn etf_list(&self) -> Vec<String> {
-        self.etf_to_manager.read().await.keys().map(|s| s.clone()).collect()
+        self.etf_to_manager
+            .read()
+            .await
+            .keys()
+            .map(|s| s.clone())
+            .collect()
     }
 
-    pub async fn etf_details(&self, ticker: String) -> Result<ETF, Error> {
-        let manager_map = self.etf_to_manager
-            .read()
-            .await;
-        let mut manager = manager_map
-            .get(&ticker)
-            .ok_or("ETF not found.")?
-            .lock()
-            .await;
-        manager.etf_details(&ticker).await
+    pub async fn etf_details(&self, ticker: &String) -> Result<ETF, Error> {
+        let manager_map = self.etf_to_manager.read().await;
+        let mut manager = manager_map.get(ticker).ok_or(Error::NotFound)?.lock().await;
+        manager.etf_details(ticker).await
     }
 }

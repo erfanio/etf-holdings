@@ -6,6 +6,7 @@ use std::fmt::Display;
 #[derive(Debug, Clone)]
 pub struct Holding {
     pub ticker: String,
+    pub yahoo_symbol: Option<String>,
     pub name: String,
     pub asset_class: String,
     pub market_value: f64,
@@ -40,22 +41,13 @@ pub trait FundManager: Send {
 
 // Common error type
 #[derive(Debug)]
-pub struct Error {
-    pub err: String,
+pub enum Error {
+    Generic(String),
+    NotFound,
 }
 
 impl<T: Display> From<T> for Error {
     fn from(error: T) -> Self {
-        Error {
-            err: error.to_string(),
-        }
-    }
-}
-
-impl Error {
-    pub fn new<T: Display>(msg: T) -> Self {
-        Error {
-            err: msg.to_string(),
-        }
+        Error::Generic(error.to_string())
     }
 }
