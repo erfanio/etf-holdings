@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+use etf_holdings::{ETFListItem};
 use rocket::serde::json::Json;
 use rocket::State;
 
@@ -11,7 +12,7 @@ use data::{Cache, ETFDetails};
 use util::Result;
 
 #[get("/etf/list")]
-async fn list(cache: &State<Cache>) -> Json<Vec<String>> {
+async fn list(cache: &State<Cache>) -> Json<Vec<ETFListItem>> {
     Json(cache.etf_list().await)
 }
 

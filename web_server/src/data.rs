@@ -1,4 +1,4 @@
-use etf_holdings::{AvailableETFs, Error as ETFErr};
+use etf_holdings::{AvailableETFs, ETFListItem, Error as ETFErr};
 use serde::Serialize;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -8,15 +8,16 @@ use crate::yahoo::{fetch_historical_prices, HistoricalPrices};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ETFDetails {
-    pub equity: Vec<HoldingEquity>,
+    pub ticker: String,
+    pub name: String,
+    pub equity: Vec<EquityDetails>,
     pub other: HashMap<String, f64>,
     pub prices: Vec<HistoricalPrices>,
 }
 
 #[derive(Serialize, Debug, Clone)]
-pub struct HoldingEquity {
+pub struct EquityDetails {
     pub ticker: String,
-    pub yahoo_symbol: Option<String>,
     pub name: String,
     pub weight: f64,
     pub location: String,
@@ -38,7 +39,7 @@ impl Cache {
             prices_cache: RwLock::new(HashMap::new()),
         }
     }
-    pub async fn etf_list(&self) -> Vec<String> {
+    pub async fn etf_list(&self) -> Vec<ETFListItem> {
         self.etfs.etf_list().await
     }
 
@@ -111,9 +112,9 @@ impl Cache {
                         vec![]
                     }
                 };
-                equity.push(HoldingEquity {
+
+                equity.push(EquityDetails {
                     ticker: holding.ticker,
-                    yahoo_symbol: holding.yahoo_symbol,
                     name: holding.name,
                     weight: holding.weight,
                     location: holding.location,
@@ -127,6 +128,8 @@ impl Cache {
         }
 
         let etf = ETFDetails {
+            ticker: etf.ticker,
+            name: etf.name,
             equity,
             other,
             prices: vec![],

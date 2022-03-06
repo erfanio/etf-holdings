@@ -5,17 +5,19 @@ use tokio::sync::{Mutex, RwLock};
 mod common;
 mod deserialize_weird_floats;
 mod ishares;
-mod yahoo;
-pub use common::{Error, FundManager, ETF};
+mod exchange;
+pub use common::{Error, FundManager, ETF, ETFListItem};
 use ishares::Ishare;
 
 pub struct AvailableETFs {
     etf_to_manager: RwLock<HashMap<String, Arc<Mutex<dyn FundManager>>>>,
+    etf_list: RwLock<Vec<ETFListItem>>,
 }
 
 impl AvailableETFs {
     pub async fn new() -> AvailableETFs {
         let mut etf_to_manager = HashMap::<String, Arc<Mutex<dyn FundManager>>>::new();
+        let mut etf_list = Vec::<ETFListItem>::new();
 
         let manager_constructors = [Ishare::new];
         for manager_constructor in manager_constructors.iter() {
@@ -24,7 +26,8 @@ impl AvailableETFs {
                     let etfs = manager.etfs_under_management();
                     let manager_ref = Arc::new(Mutex::new(manager));
                     for etf in etfs {
-                        etf_to_manager.insert(etf, manager_ref.clone());
+                        etf_to_manager.insert(etf.ticker.clone(), manager_ref.clone());
+                        etf_list.push(etf.clone());
                     }
                 }
                 Err(e) => eprintln!("{:?}", e),
@@ -33,14 +36,15 @@ impl AvailableETFs {
 
         AvailableETFs {
             etf_to_manager: RwLock::new(etf_to_manager),
+            etf_list: RwLock::new(etf_list),
         }
     }
 
-    pub async fn etf_list(&self) -> Vec<String> {
-        self.etf_to_manager
+    pub async fn etf_list(&self) -> Vec<ETFListItem> {
+        self.etf_list
             .read()
             .await
-            .keys()
+            .iter()
             .map(|s| s.clone())
             .collect()
     }

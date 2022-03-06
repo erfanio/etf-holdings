@@ -1,12 +1,12 @@
 // This file contain different common types, structs, errors...
 use async_trait::async_trait;
+use serde::Serialize;
 use std::fmt::Display;
 
 // Shared models used by the fund specific code
-#[derive(Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Holding {
     pub ticker: String,
-    pub yahoo_symbol: Option<String>,
     pub name: String,
     pub asset_class: String,
     pub market_value: f64,
@@ -21,12 +21,19 @@ pub struct Holding {
     pub market_currency: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct ETF {
     pub ticker: String,
+    pub name: String,
     pub last_update: String,
     pub outstanding_shares: f64,
     pub holdings: Vec<Holding>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ETFListItem {
+    pub ticker: String,
+    pub name: String,
 }
 
 // Trait each fund module has to implement
@@ -35,7 +42,7 @@ pub trait FundManager: Send {
     async fn new() -> Result<Self, Error>
     where
         Self: Sized;
-    fn etfs_under_management(&self) -> Vec<String>;
+    fn etfs_under_management(&self) -> Vec<ETFListItem>;
     async fn etf_details(&mut self, ticker: &String) -> Result<ETF, Error>;
 }
 
