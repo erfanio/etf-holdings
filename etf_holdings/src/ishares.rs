@@ -3,7 +3,7 @@ use scraper::{Html, Selector};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::common::{Error, FundManager, Holding, ETF, ETFListItem};
+use crate::common::{ETFListItem, Error, FundManager, Holding, ETF};
 use crate::deserialize_weird_floats;
 use crate::exchange;
 
@@ -27,7 +27,10 @@ impl FundManager for Ishare {
             match fetch_etf_list().await {
                 Ok(x) => x,
                 Err(err) => {
-                    return Err(Error::from(format!("Error Ishare::fetch_etf_list(): {:?}", err)))
+                    return Err(Error::from(format!(
+                        "Error Ishare::fetch_etf_list(): {:?}",
+                        err
+                    )))
                 }
             }
         };
@@ -38,10 +41,13 @@ impl FundManager for Ishare {
     }
 
     fn etfs_under_management(&self) -> Vec<ETFListItem> {
-        self.etf_list.values().map(|s| ETFListItem{
-            ticker: s.ticker.clone(),
-            name: s.name.clone(),
-        }).collect()
+        self.etf_list
+            .values()
+            .map(|s| ETFListItem {
+                ticker: s.ticker.clone(),
+                name: s.name.clone(),
+            })
+            .collect()
     }
 
     async fn etf_details(&mut self, ticker: &String) -> Result<ETF, Error> {
@@ -106,13 +112,15 @@ async fn fetch_etf_list() -> Result<HashMap<String, IshareETFListItem>, Error> {
             .ok_or("No href on iShare ETFs table cell.")?
             .to_string();
         let ticker = ticker_elem.inner_html();
-        etfs.insert(String::from(&ticker), IshareETFListItem {
-            ticker: ticker,
-            name: name,
-            url: url,
-        });
+        etfs.insert(
+            String::from(&ticker),
+            IshareETFListItem {
+                ticker: ticker,
+                name: name,
+                url: url,
+            },
+        );
     }
-    println!("{:?}", etfs);
     Ok(etfs)
 }
 
@@ -199,7 +207,9 @@ async fn fetch_holdings(etf_item: &IshareETFListItem) -> Result<ETF, Error> {
         for record in reader.deserialize() {
             let row: IshareHolding = record?;
             let ticker = {
-                if let Some(ticker_with_suffix) = exchange::ticker_with_exchange_suffix(&row.ticker, &row.exchange) {
+                if let Some(ticker_with_suffix) =
+                    exchange::ticker_with_exchange_suffix(&row.ticker, &row.exchange)
+                {
                     ticker_with_suffix
                 } else {
                     println!("Couldn't find a suffix for exchange {}.", &row.exchange);

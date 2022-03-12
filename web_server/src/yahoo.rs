@@ -1,3 +1,4 @@
+use chrono::{NaiveDateTime, Timelike};
 use serde::{Deserialize, Serialize};
 
 use crate::util::AnyError;
@@ -15,8 +16,14 @@ pub struct Chart {
 
 #[derive(Deserialize, Debug)]
 pub struct ChartResult {
+    pub meta: Meta,
     pub timestamp: Vec<i64>,
     pub indicators: Indicators,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Meta {
+    pub gmtoffset: i64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -42,13 +49,13 @@ pub struct Adjclose {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HistoricalPrices {
-    timestamp: i64,
-    volume: i64,
-    open: f64,
-    low: f64,
-    high: f64,
-    close: f64,
-    adjclose: f64,
+    pub timestamp: i64,
+    pub volume: i64,
+    pub open: f64,
+    pub low: f64,
+    pub high: f64,
+    pub close: f64,
+    pub adjclose: f64,
 }
 
 pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPrices>, AnyError> {
@@ -85,8 +92,14 @@ pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPr
 
     let mut history = Vec::new();
     for ((((((timestamp, volume), open), low), high), close), adjclose) in iter {
+        // remove the timezone offset and make all timestamp in GMT then use the
+        // midnight timestamp because we don't really care about when the markets close
+        let ts_normalised = NaiveDateTime::from_timestamp(timestamp - result.meta.gmtoffset, 0);
+        let midnight_ts =
+            ts_normalised.timestamp() - i64::from(ts_normalised.time().num_seconds_from_midnight());
+
         history.push(HistoricalPrices {
-            timestamp: timestamp.clone(),
+            timestamp: midnight_ts,
             volume: volume.clone(),
             open: open.clone(),
             low: low.clone(),

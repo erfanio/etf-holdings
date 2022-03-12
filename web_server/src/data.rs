@@ -3,15 +3,30 @@ use serde::Serialize;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use crate::util::{Error, Result};
+use crate::util::{merge_timestamps, Error, Result};
 use crate::yahoo::{fetch_historical_prices, HistoricalPrices};
 
+// ETFChart is the structure that contains all the information used to draw the historical holding breakdown chart
+#[derive(Serialize, Debug, Clone)]
+pub struct ETFChart {
+    pub etf_ticker: String,
+    pub etf_name: String,
+    pub holding_tickers: Vec<String>,
+    pub holding_names: Vec<String>,
+    pub holding_weights: Vec<f64>,
+    pub timestamps: Vec<i64>,
+    pub etf_prices: Vec<Option<f64>>,
+    pub holding_prices: Vec<Vec<Option<f64>>>,
+}
+
+// ETFDetails (and EquityDetails) format all the available information into an easy to use
+// structure
 #[derive(Serialize, Debug, Clone)]
 pub struct ETFDetails {
     pub ticker: String,
     pub name: String,
-    pub equity: Vec<EquityDetails>,
-    pub other: HashMap<String, f64>,
+    pub equity_holdings: Vec<EquityDetails>,
+    pub other_holdings: HashMap<String, f64>,
     pub prices: Vec<HistoricalPrices>,
 }
 
@@ -100,20 +115,21 @@ impl Cache {
             }
         };
 
-        let mut equity = Vec::new();
-        let mut other = HashMap::new();
+        let mut equity_holdings = Vec::new();
+        let mut other_holdings = HashMap::new();
         for holding in etf.holdings {
             if holding.asset_class == "Equity" {
                 let prices = {
                     // Test out fetching prices
-                    if holding.ticker == "PLUG" {
+                    if holding.ticker == "PLUG" || holding.ticker == "ORSTED.CO" {
                         self.prices(&holding.ticker).await?
                     } else {
                         vec![]
                     }
                 };
 
-                equity.push(EquityDetails {
+                // let prices = self.prices(&holding.ticker).await?;
+                equity_holdings.push(EquityDetails {
                     ticker: holding.ticker,
                     name: holding.name,
                     weight: holding.weight,
@@ -122,17 +138,20 @@ impl Cache {
                     prices,
                 });
             } else {
-                let weight = other.entry(holding.asset_class.clone()).or_insert(0.0);
+                let weight = other_holdings
+                    .entry(holding.asset_class.clone())
+                    .or_insert(0.0);
                 *weight += holding.weight;
             }
         }
 
+        let prices = self.prices(&ticker).await?;
         let etf = ETFDetails {
             ticker: etf.ticker,
             name: etf.name,
-            equity,
-            other,
-            prices: vec![],
+            equity_holdings,
+            other_holdings,
+            prices,
         };
         {
             let mut etfs_cache = self.etfs_cache.write().await;
@@ -140,5 +159,48 @@ impl Cache {
         }
 
         Ok(etf)
+    }
+
+    pub async fn chart(&self, ticker: &String) -> Result<ETFChart> {
+        let details = self.details(ticker).await?;
+
+        let mut all_prices = vec![];
+        let mut holding_tickers = vec![];
+        let mut holding_names = vec![];
+        let mut holding_weights = vec![];
+        for holding in details.equity_holdings {
+            holding_tickers.push(holding.ticker);
+            holding_names.push(holding.name);
+            holding_weights.push(holding.weight);
+            all_prices.push(holding.prices);
+        }
+
+        // Merge all prices to use the same timestamp axis. Days without price data for all
+        // holdings and the ETF become obvious after doing this.
+        // Create a Vec like [holding1, holding2, ..., etf]
+        // Having the etf at the end is important so its timestamp is merged with holdings too
+        all_prices.push(details.prices);
+        let (timestamps, merged_prices) = merge_timestamps(all_prices);
+        let merged_close_prices: Vec<Vec<Option<f64>>> = merged_prices
+            .iter()
+            .map(|x| x.iter().map(|y| Some(y.clone()?.close)).collect())
+            .collect();
+
+        let holding_prices = merged_close_prices
+            .get(0..holding_tickers.len())
+            .unwrap()
+            .to_vec();
+        let etf_prices = merged_close_prices.last().unwrap().to_vec();
+
+        Ok(ETFChart {
+            etf_ticker: details.ticker,
+            etf_name: details.name,
+            holding_tickers,
+            holding_names,
+            holding_weights,
+            timestamps,
+            etf_prices,
+            holding_prices,
+        })
     }
 }

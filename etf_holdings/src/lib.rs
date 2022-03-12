@@ -4,9 +4,9 @@ use tokio::sync::{Mutex, RwLock};
 
 mod common;
 mod deserialize_weird_floats;
-mod ishares;
 mod exchange;
-pub use common::{Error, FundManager, ETF, ETFListItem};
+mod ishares;
+pub use common::{ETFListItem, Error, FundManager, ETF};
 use ishares::Ishare;
 
 pub struct AvailableETFs {
