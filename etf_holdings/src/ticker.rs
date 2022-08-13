@@ -60,11 +60,25 @@ lazy_static! {
         m.insert("Irish Stock Exchange - All Market", ".IR");
         m
     };
+
+    static ref TICKER_OVERRIDE: HashMap<&'static str, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("451.HK", "0451.HK");
+        m.insert("968.HK", "0968.HK");
+        m
+    };
 }
 
 pub fn ticker_with_exchange_suffix(ticker: &String, exchange_name: &String) -> Option<String> {
     match (*YAHOO_EXCHANGE_SUFFIX).get(exchange_name.as_str()) {
-        Some(suffix) => Some(format!("{}{}", ticker, suffix)),
+        Some(suffix) => {
+            let full_ticker = format!("{}{}", ticker, suffix);
+
+            match (*TICKER_OVERRIDE).get(full_ticker.as_str()) {
+                Some(new_ticker) => Some(new_ticker.to_string()),
+                None => Some(full_ticker),
+            }
+        }
         None => None,
     }
 }

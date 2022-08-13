@@ -27,7 +27,7 @@ pub struct ETFDetails {
     pub name: String,
     pub equity_holdings: Vec<EquityDetails>,
     pub other_holdings: HashMap<String, f64>,
-    pub prices: Vec<HistoricalPrices>,
+    pub prices: Option<Vec<HistoricalPrices>>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -37,7 +37,7 @@ pub struct EquityDetails {
     pub weight: f64,
     pub location: String,
     pub exchange: String,
-    pub prices: Vec<HistoricalPrices>,
+    pub prices: Option<Vec<HistoricalPrices>>,
 }
 
 pub struct Cache {
@@ -122,13 +122,14 @@ impl Cache {
                 let prices = {
                     // Test out fetching prices
                     if holding.ticker == "PLUG" || holding.ticker == "ORSTED.CO" {
-                        self.prices(&holding.ticker).await?
+                        self.prices(&holding.ticker).await.ok()
                     } else {
-                        vec![]
+                        None
                     }
                 };
 
                 // let prices = self.prices(&holding.ticker).await?;
+
                 equity_holdings.push(EquityDetails {
                     ticker: holding.ticker,
                     name: holding.name,
@@ -145,7 +146,7 @@ impl Cache {
             }
         }
 
-        let prices = self.prices(&ticker).await?;
+        let prices = self.prices(&ticker).await.ok();
         let etf = ETFDetails {
             ticker: etf.ticker,
             name: etf.name,
@@ -175,22 +176,28 @@ impl Cache {
             all_prices.push(holding.prices);
         }
 
-        // Merge all prices to use the same timestamp axis. Days without price data for all
-        // holdings and the ETF become obvious after doing this.
-        // Create a Vec like [holding1, holding2, ..., etf]
+        // Merge all prices to use the same timestamp axis. Only includes dates with price data for
+        // everything (ETF and all holdings).
+        // The input for merge_timestamps should be a Vec like [holding1, holding2, ..., etf]
         // Having the etf at the end is important so its timestamp is merged with holdings too
         all_prices.push(details.prices);
         let (timestamps, merged_prices) = merge_timestamps(all_prices);
         let merged_close_prices: Vec<Vec<Option<f64>>> = merged_prices
             .iter()
-            .map(|x| x.iter().map(|y| Some(y.clone()?.close)).collect())
+            .map(|x| x.iter().map(|y| match y {
+                Some(z) => Some(z.close),
+                None => None,
+            }).collect())
             .collect();
 
         let holding_prices = merged_close_prices
             .get(0..holding_tickers.len())
             .unwrap()
             .to_vec();
-        let etf_prices = merged_close_prices.last().unwrap().to_vec();
+        let etf_prices = merged_close_prices
+            .last()
+            .unwrap()
+            .clone();
 
         Ok(ETFChart {
             etf_ticker: details.ticker,

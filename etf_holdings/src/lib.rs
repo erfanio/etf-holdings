@@ -4,8 +4,8 @@ use tokio::sync::{Mutex, RwLock};
 
 mod common;
 mod deserialize_weird_floats;
-mod exchange;
 mod ishares;
+mod ticker;
 pub use common::{ETFListItem, Error, FundManager, ETF};
 use ishares::Ishare;
 

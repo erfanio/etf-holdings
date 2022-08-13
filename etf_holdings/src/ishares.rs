@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::common::{ETFListItem, Error, FundManager, Holding, ETF};
 use crate::deserialize_weird_floats;
-use crate::exchange;
+use crate::ticker;
 
 #[derive(Debug)]
 pub struct IshareETFListItem {
@@ -207,9 +207,9 @@ async fn fetch_holdings(etf_item: &IshareETFListItem) -> Result<ETF, Error> {
         for record in reader.deserialize() {
             let row: IshareHolding = record?;
             let ticker = {
-                if let Some(ticker_with_suffix) =
-                    exchange::ticker_with_exchange_suffix(&row.ticker, &row.exchange)
-                {
+                let maybe_ticker_with_suffix =
+                    ticker::ticker_with_exchange_suffix(&row.ticker, &row.exchange);
+                if let Some(ticker_with_suffix) = maybe_ticker_with_suffix {
                     ticker_with_suffix
                 } else {
                     println!("Couldn't find a suffix for exchange {}.", &row.exchange);
