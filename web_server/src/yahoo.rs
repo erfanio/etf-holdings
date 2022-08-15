@@ -1,7 +1,7 @@
 use chrono::{NaiveDateTime, Timelike};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use crate::util::AnyError;
+use crate::types::{AnyError, HistoricalPrices};
 
 // The yahoo response is annoyingly nested so there's gonna be quite a few structs
 #[derive(Deserialize, Debug)]
@@ -46,17 +46,6 @@ pub struct Adjclose {
     pub adjclose: Vec<f64>,
 }
 // </yahoo response object>
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct HistoricalPrices {
-    pub timestamp: i64,
-    pub volume: i64,
-    pub open: f64,
-    pub low: f64,
-    pub high: f64,
-    pub close: f64,
-    pub adjclose: f64,
-}
 
 pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPrices>, AnyError> {
     let url = format!(

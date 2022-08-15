@@ -1,107 +1,65 @@
-use std::fmt::{Debug, Display};
-use std::iter::Map;
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::slice::Iter;
 
-use crate::yahoo::HistoricalPrices;
+use crate::types::{ETFChartPrice, ETFDetails, HistoricalPrices};
 
-// Generic error for other stuff. Implementing From on Error would cause everything to have generic messages and kind
-// so this is here to clearly distinguish between generic errors and errors with good messages
-#[derive(Debug)]
-pub struct AnyError(String);
-
-impl<T: Display> From<T> for AnyError {
-    fn from(error: T) -> Self {
-        AnyError(error.to_string())
+// Merge many different equity prices to use the same set of timestamps
+pub fn merge_chart_prices(details: &ETFDetails) -> Vec<ETFChartPrice> {
+    // Create a map of peekable iterator of prices and skip tickers with no price data
+    let mut price_iters: HashMap<String, Peekable<Iter<HistoricalPrices>>> = HashMap::new();
+    if let Some(etf_price) = &details.prices {
+        price_iters.insert(details.ticker.clone(), etf_price.iter().peekable());
     }
-}
-
-// Error type that emits good HTTP status
-#[derive(Debug)]
-pub enum Error {
-    Generic(String),
-    NotFound(String),
-}
-
-impl<'r> rocket::response::Responder<'r, 'static> for Error {
-    fn respond_to(self, _: &'r rocket::request::Request<'_>) -> rocket::response::Result<'static> {
-        warn_!("Error: {:?}", self);
-        match self {
-            Error::Generic(_) => Err(rocket::http::Status::InternalServerError),
-            Error::NotFound(_) => Err(rocket::http::Status::NotFound),
+    for holding in &details.equity_holdings {
+        if let Some(holding_price) = &holding.prices {
+            price_iters.insert(holding.ticker.clone(), holding_price.iter().peekable());
         }
     }
-}
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-// Merge many different equity prices to use the same timestamps
-//
-// Takes [ HistoricalPrices { timestamp: i64, ... }, ... ]
-// Returns a list of timestamps and a list of HistoricalPrices for each timestamp
-// prices.len() == merged_prices.len()
-// timestamps.len() == merged_prices[0].len()
-pub fn merge_timestamps(
-    prices: Vec<Option<Vec<HistoricalPrices>>>,
-) -> (Vec<i64>, Vec<Vec<Option<HistoricalPrices>>>) {
-    // Convert all vectors into an iterator but keep Nones in the same position
-    let mut iters: Vec<Option<Peekable<Iter<HistoricalPrices>>>> = prices
-        .iter()
-        .map(|o| match o {
-            Some(x) => Some(x.iter().peekable()),
-            None => None,
-        })
-        .collect();
-
-    let mut merged_prices = vec![vec![]; prices.len()];
-    let mut timestamps = vec![];
-
+    let mut merged_prices: Vec<ETFChartPrice> = vec![];
     // Each loop will find all items matching a particular timestamp and add them to merged_prices
     loop {
         // Find the lowest timestamp
-        let maybe_current_timestamp = iters
-            .iter_mut()
+        let maybe_current_timestamp = price_iters
+            .values_mut()
             // This bit clones the timestamp to avoid borrowing otherwise we won't be able borrow
             // again for the for loop
-            .filter_map(|x| match x {
-                Some(h) => Some(h.peek()?.timestamp.clone()),
-                None => None,
-            })
+            .filter_map(|x| Some(x.peek()?.timestamp.clone()))
             .min();
 
         // We'll see a timestamp here until all iters have been exhausted
         if let Some(current_timestamp) = maybe_current_timestamp {
             // Look for matching timestamps in all the iters
-            let mut new_prices = vec![];
-            for maybe_iter in iters.iter_mut() {
-                if let Some(iter) = maybe_iter {
-                    // Add the iter value if the timestamp matches, None otherwise
-                    if let Some(price) = iter.peek() {
-                        if price.timestamp == current_timestamp {
-                            new_prices.push(Some(Some(iter.next().unwrap().clone())));
-                        } else {
-                            new_prices.push(None);
-                        }
+            let mut new_prices: HashMap<String, f64> = HashMap::new();
+            let mut missing_prices = false;
+            for (ticker, iter) in price_iters.iter_mut() {
+                // Add the iter value if the timestamp matches, flip missing_prices otherwise but
+                // continue the loop so all matching timestamps are pulled out of iterators
+                if let Some(price) = iter.peek() {
+                    if price.timestamp == current_timestamp {
+                        new_prices.insert(ticker.clone(), iter.next().unwrap().close);
                     } else {
-                        new_prices.push(None);
+                        missing_prices = true;
                     }
                 } else {
-                    // This iter doesn't have any prices, so we want to add None to the final
-                    // results but still keep this timestamp for everything that does have prices
-                    new_prices.push(Some(None))
+                    missing_prices = true;
                 }
             }
 
-            // Only add timestamps that have prices for all entries
-            if new_prices.iter().all(|x| x.is_some()) {
-                timestamps.push(current_timestamp);
-                for (i, new_price) in new_prices.into_iter().enumerate() {
-                    merged_prices[i].push(new_price.unwrap());
-                }
+            // Ignore any timestamp with missing prices
+            if !missing_prices {
+                let etf_price = new_prices.remove(&details.ticker);
+                merged_prices.push(ETFChartPrice {
+                    timestamp: current_timestamp,
+                    etf_price,
+                    holding_prices: new_prices,
+                });
             }
         } else {
             break;
         }
     }
-    (timestamps, merged_prices)
+
+    merged_prices
 }

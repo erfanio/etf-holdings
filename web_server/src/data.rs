@@ -1,44 +1,12 @@
 use etf_holdings::{AvailableETFs, ETFListItem, Error as ETFErr};
-use serde::Serialize;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use crate::util::{merge_timestamps, Error, Result};
-use crate::yahoo::{fetch_historical_prices, HistoricalPrices};
-
-// ETFChart is the structure that contains all the information used to draw the historical holding breakdown chart
-#[derive(Serialize, Debug, Clone)]
-pub struct ETFChart {
-    pub etf_ticker: String,
-    pub etf_name: String,
-    pub holding_tickers: Vec<String>,
-    pub holding_names: Vec<String>,
-    pub holding_weights: Vec<f64>,
-    pub timestamps: Vec<i64>,
-    pub etf_prices: Vec<Option<f64>>,
-    pub holding_prices: Vec<Vec<Option<f64>>>,
-}
-
-// ETFDetails (and EquityDetails) format all the available information into an easy to use
-// structure
-#[derive(Serialize, Debug, Clone)]
-pub struct ETFDetails {
-    pub ticker: String,
-    pub name: String,
-    pub equity_holdings: Vec<EquityDetails>,
-    pub other_holdings: HashMap<String, f64>,
-    pub prices: Option<Vec<HistoricalPrices>>,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct EquityDetails {
-    pub ticker: String,
-    pub name: String,
-    pub weight: f64,
-    pub location: String,
-    pub exchange: String,
-    pub prices: Option<Vec<HistoricalPrices>>,
-}
+use crate::types::{
+    ETFChart, ETFChartHoldingDetails, ETFDetails, EquityDetails, Error, HistoricalPrices, Result,
+};
+use crate::util::merge_chart_prices;
+use crate::yahoo::fetch_historical_prices;
 
 pub struct Cache {
     etfs: AvailableETFs,
@@ -163,51 +131,31 @@ impl Cache {
     }
 
     pub async fn chart(&self, ticker: &String) -> Result<ETFChart> {
+        println!("Chart {}: Loading details.", ticker);
         let details = self.details(ticker).await?;
+        println!("Chart {}: Details loaded.", ticker);
 
-        let mut all_prices = vec![];
-        let mut holding_tickers = vec![];
-        let mut holding_names = vec![];
-        let mut holding_weights = vec![];
-        for holding in details.equity_holdings {
-            holding_tickers.push(holding.ticker);
-            holding_names.push(holding.name);
-            holding_weights.push(holding.weight);
-            all_prices.push(holding.prices);
+        let mut holding_details: HashMap<String, ETFChartHoldingDetails> = HashMap::new();
+        for holding in &details.equity_holdings {
+            holding_details.insert(
+                holding.ticker.clone(),
+                ETFChartHoldingDetails {
+                    ticker: holding.ticker.clone(),
+                    name: holding.name.clone(),
+                },
+            );
         }
 
-        // Merge all prices to use the same timestamp axis. Only includes dates with price data for
-        // everything (ETF and all holdings).
-        // The input for merge_timestamps should be a Vec like [holding1, holding2, ..., etf]
-        // Having the etf at the end is important so its timestamp is merged with holdings too
-        all_prices.push(details.prices);
-        let (timestamps, merged_prices) = merge_timestamps(all_prices);
-        let merged_close_prices: Vec<Vec<Option<f64>>> = merged_prices
-            .iter()
-            .map(|x| x.iter().map(|y| match y {
-                Some(z) => Some(z.close),
-                None => None,
-            }).collect())
-            .collect();
+        println!("Chart {}: Merging prices.", ticker);
+        let price_chart = merge_chart_prices(&details);
 
-        let holding_prices = merged_close_prices
-            .get(0..holding_tickers.len())
-            .unwrap()
-            .to_vec();
-        let etf_prices = merged_close_prices
-            .last()
-            .unwrap()
-            .clone();
-
-        Ok(ETFChart {
+        let result = ETFChart {
             etf_ticker: details.ticker,
             etf_name: details.name,
-            holding_tickers,
-            holding_names,
-            holding_weights,
-            timestamps,
-            etf_prices,
-            holding_prices,
-        })
+            holding_details,
+            price_chart,
+        };
+        println!("Chart {}: Final results\n{:#?}", ticker, result);
+        Ok(result)
     }
 }

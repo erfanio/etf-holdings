@@ -6,10 +6,11 @@ use rocket::serde::json::Json;
 use rocket::State;
 
 mod data;
+mod types;
 mod util;
 mod yahoo;
-use data::{Cache, ETFChart};
-use util::Result;
+use data::Cache;
+use types::{ETFChart, Result};
 
 #[get("/etf/list")]
 async fn list(cache: &State<Cache>) -> Json<Vec<ETFListItem>> {
