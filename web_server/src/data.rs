@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use crate::types::{
     ETFChart, ETFChartHoldingDetails, ETFDetails, EquityDetails, Error, HistoricalPrices, Result,
 };
-use crate::util::merge_chart_prices;
+use crate::util::create_price_chart;
 use crate::yahoo::fetch_historical_prices;
 
 pub struct Cache {
@@ -87,16 +87,15 @@ impl Cache {
         let mut other_holdings = HashMap::new();
         for holding in etf.holdings {
             if holding.asset_class == "Equity" {
-                let prices = {
-                    // Test out fetching prices
-                    if holding.ticker == "PLUG" || holding.ticker == "ORSTED.CO" {
-                        self.prices(&holding.ticker).await.ok()
-                    } else {
-                        None
-                    }
-                };
-
-                // let prices = self.prices(&holding.ticker).await?;
+                // Fetch price history for equity holdings
+                // let prices = {
+                //     if holding.ticker == "PLUG" || holding.ticker == "ORSTED.CO" {
+                //         self.prices(&holding.ticker).await.ok()
+                //     } else {
+                //         None
+                //     }
+                // };
+                let prices = self.prices(&holding.ticker).await.ok();
 
                 equity_holdings.push(EquityDetails {
                     ticker: holding.ticker,
@@ -107,6 +106,7 @@ impl Cache {
                     prices,
                 });
             } else {
+                // Add up other types of holdings
                 let weight = other_holdings
                     .entry(holding.asset_class.clone())
                     .or_insert(0.0);
@@ -147,13 +147,13 @@ impl Cache {
         }
 
         println!("Chart {}: Merging prices.", ticker);
-        let price_chart = merge_chart_prices(&details);
+        let chart = create_price_chart(&details)?;
 
         let result = ETFChart {
             etf_ticker: details.ticker,
             etf_name: details.name,
             holding_details,
-            price_chart,
+            chart,
         };
         println!("Chart {}: Final results\n{:#?}", ticker, result);
         Ok(result)

@@ -49,7 +49,7 @@ pub struct Adjclose {
 
 pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPrices>, AnyError> {
     let url = format!(
-        "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=1mo",
+        "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=6mo",
         ticker
     );
     let resp: ChartResponse = reqwest::get(url).await?.json().await?;

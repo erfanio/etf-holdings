@@ -38,7 +38,7 @@ pub struct ETFChart {
     pub etf_ticker: String,
     pub etf_name: String,
     pub holding_details: HashMap<String, ETFChartHoldingDetails>,
-    pub price_chart: Vec<ETFChartPrice>,
+    pub chart: Vec<ETFPriceChart>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -48,9 +48,9 @@ pub struct ETFChartHoldingDetails {
 }
 
 #[derive(Serialize, Debug, Clone)]
-pub struct ETFChartPrice {
+pub struct ETFPriceChart {
     pub timestamp: i64,
-    pub etf_price: Option<f64>,
+    pub etf_price: f64,
     pub holding_prices: HashMap<String, f64>,
 }
 
