@@ -3,7 +3,7 @@
 use chrono::{NaiveDateTime, Timelike};
 use serde::Deserialize;
 
-use crate::types::{GoodError, GoodResult, HistoricalPrices, to_good_error};
+use crate::types::{to_good_error, GoodError, GoodResult, HistoricalPrices};
 
 // The yahoo response is annoyingly nested so there's gonna be quite a few structs
 
@@ -57,23 +57,31 @@ pub async fn fetch_historical_prices(ticker: &String) -> GoodResult<Vec<Historic
         "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=6mo",
         ticker
     );
-    let resp: YahooResponse = reqwest::get(url).await.map_err(to_good_error)?.json().await.map_err(to_good_error)?;
+    let resp: YahooResponse = reqwest::get(url)
+        .await
+        .map_err(to_good_error)?
+        .json()
+        .await
+        .map_err(to_good_error)?;
 
     let result = resp
         .chart
         .result
         .get(0)
-        .ok_or("Yahoo response had no results.").map_err(to_good_error)?;
+        .ok_or("Yahoo response had no results.")
+        .map_err(to_good_error)?;
     let quote = result
         .indicators
         .quote
         .get(0)
-        .ok_or("Yahoo response had no quotes.").map_err(to_good_error)?;
+        .ok_or("Yahoo response had no quotes.")
+        .map_err(to_good_error)?;
     let adjclose = result
         .indicators
         .adjclose
         .get(0)
-        .ok_or("Yahoo response had no adjclose.").map_err(to_good_error)?;
+        .ok_or("Yahoo response had no adjclose.")
+        .map_err(to_good_error)?;
     let iter = result
         .timestamp
         .iter()

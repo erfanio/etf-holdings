@@ -1,13 +1,19 @@
-//! Util and helper functions
+//! Module used for constructing ChartResponse.
 
+use etf_holdings_lib::ETFHoldings;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::slice::Iter;
 
-use crate::types::{ChartPrice, DetailsResponse, GoodError, HistoricalPrices, GoodResult};
+use crate::cache::Cache;
+use crate::details::details_response;
+use crate::types::{
+    ChartHoldingDetails, ChartPrice, ChartResponse, DetailsResponse, GoodError, GoodResult,
+    HistoricalPrices,
+};
 
-// Merge many different equity prices to use the same set of timestamps
-pub fn merge_chart_prices(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
+/// Merge many different equity prices to use the same set of timestamps
+fn merge_chart_prices(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
     // Create a map of peekable iterator of prices and skip tickers with no price data
     let mut price_iters: HashMap<String, Peekable<Iter<HistoricalPrices>>> = HashMap::new();
     if let Some(etf_price) = &details.prices {
@@ -68,11 +74,11 @@ pub fn merge_chart_prices(details: &DetailsResponse) -> GoodResult<Vec<ChartPric
     Ok(merged_prices)
 }
 
-// Create a price history chart.
-// * The Y-axis is the historical price as a percentage of first date's price (ETF's price is 100,
-// each holding's price is equal to their weight)
-// * The X-axis is the date
-pub fn create_price_chart(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
+/// Create a price history chart.
+/// * The Y-axis is the historical price as a percentage of first date's price (ETF's price is 100,
+/// each holding's price is equal to their weight)
+/// * The X-axis is the date
+fn create_price_chart(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
     let mut prices = merge_chart_prices(details)?;
     prices.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
@@ -101,4 +107,40 @@ pub fn create_price_chart(details: &DetailsResponse) -> GoodResult<Vec<ChartPric
     }
 
     Ok(prices)
+}
+
+/// Chart response includes ETF/holding details and a merged chart of ETF/holdings price history.
+///
+/// This generated from the DetailResponse from detail::details_response.
+pub async fn chart_response(
+    cache: &Cache,
+    etf_holdings: &ETFHoldings,
+    ticker: &String,
+) -> GoodResult<ChartResponse> {
+    println!("Chart {}: Loading details.", ticker);
+    let details = details_response(cache, etf_holdings, ticker).await?;
+    println!("Chart {}: Details loaded.", ticker);
+
+    let mut holding_details: HashMap<String, ChartHoldingDetails> = HashMap::new();
+    for holding in &details.equity_holdings {
+        holding_details.insert(
+            holding.ticker.clone(),
+            ChartHoldingDetails {
+                ticker: holding.ticker.clone(),
+                name: holding.name.clone(),
+            },
+        );
+    }
+
+    println!("Chart {}: Merging prices.", ticker);
+    let chart = create_price_chart(&details)?;
+
+    let result = ChartResponse {
+        etf_ticker: details.ticker,
+        etf_name: details.name,
+        holding_details,
+        chart,
+    };
+    println!("Chart {}: Final results\n{:#?}", ticker, result);
+    Ok(result)
 }
