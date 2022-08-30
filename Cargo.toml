@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "web_server",
-    "etf_holdings",
+    "lib",
+    "web-server",
 ]

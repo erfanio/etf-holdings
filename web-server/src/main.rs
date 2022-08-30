@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
-use etf_holdings::ETFListItem;
+use etf_holdings_lib::ETFListItem;
 use rocket::serde::json::Json;
 use rocket::State;
 

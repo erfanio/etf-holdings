@@ -1,6 +1,6 @@
 //! Provide a caching layer between the public web API, and the library
 
-use etf_holdings::{ETFHoldings, ETFListItem, Error as ETFErr};
+use etf_holdings_lib::{ETFHoldings, ETFListItem, Error as ETFErr};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 

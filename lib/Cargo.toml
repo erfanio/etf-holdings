@@ -1,5 +1,5 @@
 [package]
-name = "etf_holdings"
+name = "etf_holdings_lib"
 version = "0.1.0"
 edition = "2018"
 description = "A library to fetch and parse ETF holding data from the fund's own website."
