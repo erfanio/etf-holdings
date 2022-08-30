@@ -1,21 +1,28 @@
+//! A library for fetching ETF details and holdings.
+//!
+//! ETFHoldings provides an interface to discover supported ETFs and fetch their details.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-mod common;
-mod deserialize_weird_floats;
+mod deserialize_formatted_floats;
 mod ishares;
 mod ticker;
-pub use common::{ETFListItem, Error, FundManager, ETF};
+mod types;
 use ishares::Ishare;
+pub use types::{ETFListItem, Error, FundManager, ETF};
 
-pub struct AvailableETFs {
+/// An instance of `ETFHoldings` can list supported ETFs and fetch ETF details.
+pub struct ETFHoldings {
     etf_to_manager: RwLock<HashMap<String, Arc<Mutex<dyn FundManager>>>>,
     etf_list: RwLock<Vec<ETFListItem>>,
 }
 
-impl AvailableETFs {
-    pub async fn new() -> AvailableETFs {
+impl ETFHoldings {
+    /// Creates an instance of ETFHoldings. This includes network calls to find an up to date list
+    /// of ETFs.
+    pub async fn new() -> ETFHoldings {
         let mut etf_to_manager = HashMap::<String, Arc<Mutex<dyn FundManager>>>::new();
         let mut etf_list = Vec::<ETFListItem>::new();
 
@@ -34,12 +41,13 @@ impl AvailableETFs {
             }
         }
 
-        AvailableETFs {
+        ETFHoldings {
             etf_to_manager: RwLock::new(etf_to_manager),
             etf_list: RwLock::new(etf_list),
         }
     }
 
+    /// Returns a list of supported ETFs.
     pub async fn etf_list(&self) -> Vec<ETFListItem> {
         self.etf_list
             .read()
@@ -49,6 +57,7 @@ impl AvailableETFs {
             .collect()
     }
 
+    /// Fetch ETF details and holdings for a supported ETF.
     pub async fn etf_details(&self, ticker: &String) -> Result<ETF, Error> {
         let manager_map = self.etf_to_manager.read().await;
         let mut manager = manager_map.get(ticker).ok_or(Error::NotFound)?.lock().await;

@@ -1,14 +1,16 @@
+//! Implements FundManager for iShare ETFs
+
 use async_trait::async_trait;
 use scraper::{Html, Selector};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::common::{ETFListItem, Error, FundManager, Holding, ETF};
-use crate::deserialize_weird_floats;
-use crate::ticker;
+use crate::deserialize_formatted_floats;
+use crate::ticker::fully_qualified_ticker;
+use crate::types::{ETFListItem, Error, FundManager, Holding, ETF};
 
 #[derive(Debug)]
-pub struct IshareETFListItem {
+struct IshareETFListItem {
     ticker: String,
     name: String,
     url: String,
@@ -133,19 +135,19 @@ struct IshareHolding {
     #[serde(rename = "Asset Class")]
     asset_class: String,
     #[serde(rename = "Market Value")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     market_value: f64,
     #[serde(rename = "Weight (%)")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     weight: f64,
     #[serde(rename = "Notional Value")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     notional_value: f64,
     #[serde(rename = "Shares")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     shares: f64,
     #[serde(rename = "Price")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     price: f64,
     #[serde(rename = "Location")]
     location: String,
@@ -154,7 +156,7 @@ struct IshareHolding {
     #[serde(rename = "Currency")]
     currency: String,
     #[serde(rename = "FX Rate")]
-    #[serde(with = "deserialize_weird_floats")]
+    #[serde(with = "deserialize_formatted_floats")]
     fx_rate: f64,
     #[serde(rename = "Market Currency")]
     market_currency: String,
@@ -190,7 +192,7 @@ async fn fetch_holdings(etf_item: &IshareETFListItem) -> Result<ETF, Error> {
                     last_update = Some(row.get(1).unwrap().to_string());
                 }
                 if row.get(0).unwrap() == "Shares Outstanding" {
-                    outstanding_shares = Some(deserialize_weird_floats::parse_weird_float(
+                    outstanding_shares = Some(deserialize_formatted_floats::parse_formatted_float(
                         row.get(1).unwrap(),
                     )?);
                 }
@@ -206,16 +208,7 @@ async fn fetch_holdings(etf_item: &IshareETFListItem) -> Result<ETF, Error> {
         let mut reader = csv::ReaderBuilder::new().from_reader(holdings_table.as_bytes());
         for record in reader.deserialize() {
             let row: IshareHolding = record?;
-            let ticker = {
-                let maybe_ticker_with_suffix =
-                    ticker::ticker_with_exchange_suffix(&row.ticker, &row.exchange);
-                if let Some(ticker_with_suffix) = maybe_ticker_with_suffix {
-                    ticker_with_suffix
-                } else {
-                    println!("Couldn't find a suffix for exchange {}.", &row.exchange);
-                    row.ticker
-                }
-            };
+            let ticker = fully_qualified_ticker(&row.ticker, &row.exchange);
             holdings.push(Holding {
                 ticker: ticker,
                 name: row.name,

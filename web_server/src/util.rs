@@ -1,17 +1,19 @@
+//! Util and helper functions
+
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::slice::Iter;
 
-use crate::types::{Error, ETFPriceChart, ETFDetails, HistoricalPrices, Result};
+use crate::types::{ChartPrice, DetailsResponse, GoodError, HistoricalPrices, GoodResult};
 
 // Merge many different equity prices to use the same set of timestamps
-pub fn merge_chart_prices(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
+pub fn merge_chart_prices(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
     // Create a map of peekable iterator of prices and skip tickers with no price data
     let mut price_iters: HashMap<String, Peekable<Iter<HistoricalPrices>>> = HashMap::new();
     if let Some(etf_price) = &details.prices {
         price_iters.insert(details.ticker.clone(), etf_price.iter().peekable());
     } else {
-        return Err(Error::Generic("ETF Price not available!".to_string()));
+        return Err(GoodError::Generic("ETF Price not available!".to_string()));
     }
     for holding in &details.equity_holdings {
         if let Some(holding_price) = &holding.prices {
@@ -19,7 +21,7 @@ pub fn merge_chart_prices(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
         }
     }
 
-    let mut merged_prices: Vec<ETFPriceChart> = vec![];
+    let mut merged_prices: Vec<ChartPrice> = vec![];
     // Each loop will find all items matching a particular timestamp and add them to merged_prices
     loop {
         // Find the lowest timestamp
@@ -52,7 +54,7 @@ pub fn merge_chart_prices(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
             // Ignore any timestamp with missing prices
             if !missing_prices {
                 let etf_price = new_prices.remove(&details.ticker).unwrap();
-                merged_prices.push(ETFPriceChart {
+                merged_prices.push(ChartPrice {
                     timestamp: current_timestamp,
                     etf_price,
                     holding_prices: new_prices,
@@ -70,7 +72,7 @@ pub fn merge_chart_prices(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
 // * The Y-axis is the historical price as a percentage of first date's price (ETF's price is 100,
 // each holding's price is equal to their weight)
 // * The X-axis is the date
-pub fn create_price_chart(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
+pub fn create_price_chart(details: &DetailsResponse) -> GoodResult<Vec<ChartPrice>> {
     let mut prices = merge_chart_prices(details)?;
     prices.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
@@ -97,7 +99,6 @@ pub fn create_price_chart(details: &ETFDetails) -> Result<Vec<ETFPriceChart>> {
             *holding_price *= holding_multipliers.get(ticker).unwrap();
         }
     }
-
 
     Ok(prices)
 }

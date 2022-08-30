@@ -1,32 +1,42 @@
-use etf_holdings::{AvailableETFs, ETFListItem, Error as ETFErr};
+//! Provide a caching layer between the public web API, and the library
+
+use etf_holdings::{ETFHoldings, ETFListItem, Error as ETFErr};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::types::{
-    ETFChart, ETFChartHoldingDetails, ETFDetails, EquityDetails, Error, HistoricalPrices, Result,
+    ChartHoldingDetails, ChartResponse, DetailsEquityHolding, DetailsResponse, GoodError,
+    HistoricalPrices, GoodResult,
 };
 use crate::util::create_price_chart;
 use crate::yahoo::fetch_historical_prices;
 
+/// Generates responses for the web_server and caches ETF details and price history.
+///
+/// TODO: Split the business logic in Cache into its own module.
 pub struct Cache {
-    etfs: AvailableETFs,
-    etfs_cache: RwLock<HashMap<String, ETFDetails>>,
+    etf_holdings: ETFHoldings,
+    etfs_cache: RwLock<HashMap<String, DetailsResponse>>,
     prices_cache: RwLock<HashMap<String, Vec<HistoricalPrices>>>,
 }
 
 impl Cache {
+    /// Create a new instance of `Cache`
     pub async fn new() -> Self {
         Cache {
-            etfs: AvailableETFs::new().await,
+            etf_holdings: ETFHoldings::new().await,
             etfs_cache: RwLock::new(HashMap::new()),
             prices_cache: RwLock::new(HashMap::new()),
         }
     }
+
+    /// Return a list of ETFs supported by the ETF Holdings library.
     pub async fn etf_list(&self) -> Vec<ETFListItem> {
-        self.etfs.etf_list().await
+        self.etf_holdings.etf_list().await
     }
 
-    async fn prices(&self, ticker: &String) -> Result<Vec<HistoricalPrices>> {
+    /// Fetch the price history for a stock.
+    async fn prices(&self, ticker: &String) -> GoodResult<Vec<HistoricalPrices>> {
         {
             let prices_cache = self.prices_cache.read().await;
             if let Some(cached) = prices_cache.get(ticker) {
@@ -40,7 +50,7 @@ impl Cache {
             match fetch_historical_prices(&ticker).await {
                 Ok(x) => x,
                 Err(err) => {
-                    return Err(Error::Generic(format!(
+                    return Err(GoodError::Generic(format!(
                         "Error Yahoo::fetch_historical_prices({}): {:?}",
                         ticker, err
                     )))
@@ -55,7 +65,10 @@ impl Cache {
         Ok(prices)
     }
 
-    pub async fn details(&self, ticker: &String) -> Result<ETFDetails> {
+    /// Fetch ETF/holdings details and prices to create a DetailsResponse.
+    ///
+    /// All fetched prices and the final response is cached.
+    pub async fn details(&self, ticker: &String) -> GoodResult<DetailsResponse> {
         {
             let etfs_cache = self.etfs_cache.read().await;
             if let Some(cached) = etfs_cache.get(ticker) {
@@ -66,17 +79,17 @@ impl Cache {
         println!("Details for {} not cached :(", ticker);
 
         let etf = {
-            match self.etfs.etf_details(ticker).await {
+            match self.etf_holdings.etf_details(ticker).await {
                 Ok(x) => x,
                 Err(ETFErr::NotFound) => {
-                    return Err(Error::NotFound(format!(
-                        "Can't find {} in AvailableETFs.",
+                    return Err(GoodError::NotFound(format!(
+                        "Can't find {} in ETFHoldings.",
                         ticker
                     )))
                 }
                 Err(ETFErr::Generic(msg)) => {
-                    return Err(Error::Generic(format!(
-                        "Error AvailableETFs::etf_details({}): {:?}",
+                    return Err(GoodError::Generic(format!(
+                        "Error ETFHoldings::etf_details({}): {:?}",
                         ticker, msg
                     )))
                 }
@@ -97,7 +110,7 @@ impl Cache {
                 // };
                 let prices = self.prices(&holding.ticker).await.ok();
 
-                equity_holdings.push(EquityDetails {
+                equity_holdings.push(DetailsEquityHolding {
                     ticker: holding.ticker,
                     name: holding.name,
                     weight: holding.weight,
@@ -115,7 +128,7 @@ impl Cache {
         }
 
         let prices = self.prices(&ticker).await.ok();
-        let etf = ETFDetails {
+        let etf = DetailsResponse {
             ticker: etf.ticker,
             name: etf.name,
             equity_holdings,
@@ -130,16 +143,17 @@ impl Cache {
         Ok(etf)
     }
 
-    pub async fn chart(&self, ticker: &String) -> Result<ETFChart> {
+    /// Use Cache::details() to fetch ETF details and create a ChartResponse from it.
+    pub async fn chart(&self, ticker: &String) -> GoodResult<ChartResponse> {
         println!("Chart {}: Loading details.", ticker);
         let details = self.details(ticker).await?;
         println!("Chart {}: Details loaded.", ticker);
 
-        let mut holding_details: HashMap<String, ETFChartHoldingDetails> = HashMap::new();
+        let mut holding_details: HashMap<String, ChartHoldingDetails> = HashMap::new();
         for holding in &details.equity_holdings {
             holding_details.insert(
                 holding.ticker.clone(),
-                ETFChartHoldingDetails {
+                ChartHoldingDetails {
                     ticker: holding.ticker.clone(),
                     name: holding.name.clone(),
                 },
@@ -149,7 +163,7 @@ impl Cache {
         println!("Chart {}: Merging prices.", ticker);
         let chart = create_price_chart(&details)?;
 
-        let result = ETFChart {
+        let result = ChartResponse {
             etf_ticker: details.ticker,
             etf_name: details.name,
             holding_details,

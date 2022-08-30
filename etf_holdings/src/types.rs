@@ -1,9 +1,20 @@
-// This file contain different common types, structs, errors...
+//! Contains different common types, structs, errors...
+
 use async_trait::async_trait;
 use serde::Serialize;
 use std::fmt::Display;
 
-// Shared models used by the fund specific code
+/// ETF details including holding information
+#[derive(Serialize, Debug, Clone)]
+pub struct ETF {
+    pub ticker: String,
+    pub name: String,
+    pub last_update: String,
+    pub outstanding_shares: f64,
+    pub holdings: Vec<Holding>,
+}
+
+/// ETF Holding details
 #[derive(Serialize, Debug, Clone)]
 pub struct Holding {
     pub ticker: String,
@@ -21,22 +32,14 @@ pub struct Holding {
     pub market_currency: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct ETF {
-    pub ticker: String,
-    pub name: String,
-    pub last_update: String,
-    pub outstanding_shares: f64,
-    pub holdings: Vec<Holding>,
-}
-
+/// Limited ETF information used for listing available ETFs
 #[derive(Serialize, Debug, Clone)]
 pub struct ETFListItem {
     pub ticker: String,
     pub name: String,
 }
 
-// Trait each fund module has to implement
+/// Each fund manager module has to implement this trait
 #[async_trait]
 pub trait FundManager: Send {
     async fn new() -> Result<Self, Error>
@@ -46,7 +49,7 @@ pub trait FundManager: Send {
     async fn etf_details(&mut self, ticker: &String) -> Result<ETF, Error>;
 }
 
-// Common error type
+/// Common error type
 #[derive(Debug)]
 pub enum Error {
     Generic(String),

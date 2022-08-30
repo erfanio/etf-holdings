@@ -1,9 +1,11 @@
+//! Qualify tickers with exchange suffix
+
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-// Static mapping of exchange names to the suffix used in yahoo symbols
-// https://help.yahoo.com/kb/SLN2310.html
 lazy_static! {
+    /// Mapping of exchange names to the suffix used in yahoo symbols
+    /// https://help.yahoo.com/kb/SLN2310.html
     static ref YAHOO_EXCHANGE_SUFFIX: HashMap<&'static str, &'static str> = {
         let mut m = HashMap::new();
         // United States
@@ -61,6 +63,7 @@ lazy_static! {
         m
     };
 
+    /// Mapping of ticker aliases to the canonical ticker
     static ref TICKER_OVERRIDE: HashMap<&'static str, &'static str> = {
         let mut m = HashMap::new();
         m.insert("451.HK", "0451.HK");
@@ -69,16 +72,53 @@ lazy_static! {
     };
 }
 
-pub fn ticker_with_exchange_suffix(ticker: &String, exchange_name: &String) -> Option<String> {
+/// Returns a fully qualified ticker that can be used for price information
+///
+/// We need a unique ticker for every stock across the world. Tickers aren't guaranteed to be
+/// unique internationally but they are unique within their own stock exchange.
+///
+/// Since Yahoo is prevelant source of stock information, we'll copy their solution which adds a
+/// stock exchange suffix to create a globally unique fully qualified ticker. Yahoo doesn't add a
+/// suffix for US stocks (probably because they're guaranteed within the US) but all intenational
+/// stocks have a suffix.
+///
+/// For example Yahoo `MEL.NZ` is a Kiwi company with ticker MEL listed on New Zealand Exchange
+///
+/// There are also quirky stocks that are often badly encoded or have aliases. This function will
+/// correct those mistakes as well.
+///
+/// For example take `0968.HK`, XINYI SOLAR HOLDINGS LTD, the ticker, 0968, is interpreted as a
+/// number in spreadsheets and "corrected" to 968. We have an override for `968.HK` -> `0968.HK`
+///
+/// Examples:
+///
+/// ```ignore
+/// let mel = fully_qualified_ticker(
+///     &"MEL".to_string(),
+///     &"New Zealand Exchange Ltd".to_string(),
+/// );
+/// assert_eq!(mel, "MEL.NZ".to_string());
+///
+/// let xinyi = fully_qualified_ticker(
+///     &"968".to_string(),
+///     &"Hong Kong Exchanges And Clearing Ltd".to_string()
+/// );
+/// assert_eq!(xinyi, "0968.HK".to_string());
+/// ```
+pub fn fully_qualified_ticker(ticker: &String, exchange_name: &String) -> String {
     match (*YAHOO_EXCHANGE_SUFFIX).get(exchange_name.as_str()) {
         Some(suffix) => {
             let full_ticker = format!("{}{}", ticker, suffix);
 
+            // Check if there is an override for this ticker
             match (*TICKER_OVERRIDE).get(full_ticker.as_str()) {
-                Some(new_ticker) => Some(new_ticker.to_string()),
-                None => Some(full_ticker),
+                Some(new_ticker) => new_ticker.to_string(),
+                None => full_ticker,
             }
         }
-        None => None,
+        None => {
+            println!("Couldn't find a suffix for exchange {}.", exchange_name);
+            ticker.clone()
+        }
     }
 }

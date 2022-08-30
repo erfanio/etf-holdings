@@ -1,39 +1,43 @@
+//! Yahoo is our source of price history.
+
 use chrono::{NaiveDateTime, Timelike};
 use serde::Deserialize;
 
-use crate::types::{AnyError, HistoricalPrices};
+use crate::types::{GoodError, GoodResult, HistoricalPrices, to_good_error};
 
 // The yahoo response is annoyingly nested so there's gonna be quite a few structs
+
+/// Yahoo price history response type
 #[derive(Deserialize, Debug)]
-pub struct ChartResponse {
-    pub chart: Chart,
+pub struct YahooResponse {
+    pub chart: YahooChart,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Chart {
-    pub result: Vec<ChartResult>,
+pub struct YahooChart {
+    pub result: Vec<YahooResult>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ChartResult {
-    pub meta: Meta,
+pub struct YahooResult {
+    pub meta: YahooMeta,
     pub timestamp: Vec<i64>,
-    pub indicators: Indicators,
+    pub indicators: YahooIndicators,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Meta {
+pub struct YahooMeta {
     pub gmtoffset: i64,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Indicators {
-    pub quote: Vec<Quote>,
-    pub adjclose: Vec<Adjclose>,
+pub struct YahooIndicators {
+    pub quote: Vec<YahooQuote>,
+    pub adjclose: Vec<YahooAdjclose>,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Quote {
+pub struct YahooQuote {
     pub volume: Vec<i64>,
     pub open: Vec<f64>,
     pub low: Vec<f64>,
@@ -42,33 +46,34 @@ pub struct Quote {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Adjclose {
+pub struct YahooAdjclose {
     pub adjclose: Vec<f64>,
 }
 // </yahoo response object>
 
-pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPrices>, AnyError> {
+/// Fetch price history for a stock
+pub async fn fetch_historical_prices(ticker: &String) -> GoodResult<Vec<HistoricalPrices>> {
     let url = format!(
         "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=6mo",
         ticker
     );
-    let resp: ChartResponse = reqwest::get(url).await?.json().await?;
+    let resp: YahooResponse = reqwest::get(url).await.map_err(to_good_error)?.json().await.map_err(to_good_error)?;
 
     let result = resp
         .chart
         .result
         .get(0)
-        .ok_or("Yahoo response had no results.")?;
+        .ok_or("Yahoo response had no results.").map_err(to_good_error)?;
     let quote = result
         .indicators
         .quote
         .get(0)
-        .ok_or("Yahoo response had no quotes.")?;
+        .ok_or("Yahoo response had no quotes.").map_err(to_good_error)?;
     let adjclose = result
         .indicators
         .adjclose
         .get(0)
-        .ok_or("Yahoo response had no adjclose.")?;
+        .ok_or("Yahoo response had no adjclose.").map_err(to_good_error)?;
     let iter = result
         .timestamp
         .iter()
@@ -100,7 +105,7 @@ pub async fn fetch_historical_prices(ticker: &String) -> Result<Vec<HistoricalPr
 
     // Sanity check
     if history.len() != result.timestamp.len() {
-        return Err(AnyError::from(format!(
+        return Err(GoodError::Generic(format!(
             "history.len() {} != {} timestamp.len()",
             history.len(),
             result.timestamp.len()
